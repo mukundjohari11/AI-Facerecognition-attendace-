@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # ── MongoDB ────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: attendance-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  # ── Python ML Service ──────────────────────────────────
+  ml-service:
+    build: ./ml-service
+    container_name: attendance-ml
+    ports:
+      - "8000:8000"
+    volumes:
+      - ml-data:/app/data
+    restart: unless-stopped
+    environment:
+      - ML_HOST=0.0.0.0
+      - ML_PORT=8000
+
+  # ── Node.js API Server ─────────────────────────────────
+  api-server:
+    build: ./api-server
+    container_name: attendance-api
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+      - ml-service
+    restart: unless-stopped
+    environment:
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/attendance_system
+      - JWT_SECRET=your_jwt_secret_change_in_production
+      - JWT_EXPIRE=7d
+      - ML_SERVICE_URL=http://ml-service:8000/api/ml
+
+  # ── React Frontend ─────────────────────────────────────
+  frontend:
+    build: ./frontend
+    container_name: attendance-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-server
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+  ml-data:

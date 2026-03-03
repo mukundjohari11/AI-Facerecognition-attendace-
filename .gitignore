@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+ml-service/venv/
+
+# Build outputs
+frontend/dist/
+*.pyc
+__pycache__/
+
+# ML data & model cache
+ml-service/data/
+ml-service/*.pt
+
+# Environment
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Uploads
+uploads/
