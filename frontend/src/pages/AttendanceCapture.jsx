@@ -325,6 +325,48 @@ export default function AttendanceCapture() {
                         </div>
                     )}
 
+                    {/* Out-of-section warning */}
+                    {result.outOfSectionWarning?.length > 0 && (
+                        <div className="card" style={{
+                            marginBottom: '1.5rem',
+                            border: '1px solid var(--accent-amber)',
+                            background: 'rgba(245, 158, 11, 0.08)',
+                        }}>
+                            <div className="card-header">
+                                <h3 className="card-title" style={{ color: 'var(--accent-amber)' }}>
+                                    ⚠️ Students from Other Sections Detected
+                                </h3>
+                                <span className="badge badge-warning">{result.outOfSectionWarning.length}</span>
+                            </div>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
+                                These students were recognized but belong to sections you did not select.
+                                They are <strong>not included</strong> in this attendance record.
+                            </p>
+                            <div className="table-wrapper">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Roll Number</th>
+                                            <th>Actual Section</th>
+                                            <th>Confidence</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {result.outOfSectionWarning.map((s, i) => (
+                                            <tr key={i}>
+                                                <td>{s.name}</td>
+                                                <td>{s.rollNumber}</td>
+                                                <td><span className="badge">{s.section}</span></td>
+                                                <td>{(s.confidence * 100).toFixed(1)}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Actions */}
                     <div style={{ display: 'flex', gap: '1rem' }}>
                         <button

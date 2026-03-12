@@ -23,6 +23,7 @@ class MatchResult(BaseModel):
 class RecognizeResponse(BaseModel):
     matches: List[MatchResult]
     low_confidence: List[MatchResult]
+    out_of_section: Optional[List[MatchResult]] = []
     unknown_faces: int
     total_detected: int
 

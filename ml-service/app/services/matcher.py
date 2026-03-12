@@ -85,9 +85,10 @@ class FaceMatcher:
         # Step 3: FAISS batch search
         distances, candidate_ids = self.index_manager.search(embeddings, k=1)
 
-        # Step 4–6: Threshold, deduplicate, flag unknowns
+        # Step 4–6: Threshold, deduplicate, flag unknowns & out-of-section
         matches: List[Dict[str, Any]] = []
         low_confidence: List[Dict[str, Any]] = []
+        out_of_section: List[Dict[str, Any]] = []
         unknown_count = 0
         seen_students: set = set()
 
@@ -102,13 +103,20 @@ class FaceMatcher:
                 unknown_count += 1
                 continue
 
-            # Section filter
+            # Section filter — capture out-of-section students instead of silently skipping
             if allowed_student_ids and student_id not in allowed_student_ids:
+                if sim >= LOW_CONFIDENCE_LOWER and student_id not in seen_students:
+                    out_of_section.append({
+                        "student_id": student_id,
+                        "confidence": sim,
+                        "bbox": bbox,
+                        "detection_prob": det_prob,
+                    })
+                    seen_students.add(student_id)
                 continue
 
             # Deduplicate — keep highest confidence per student
             if student_id in seen_students:
-                # Update if this detection has higher confidence
                 for m in matches + low_confidence:
                     if m["student_id"] == student_id and sim > m["confidence"]:
                         m["confidence"] = sim
@@ -133,17 +141,17 @@ class FaceMatcher:
         # Sort by confidence descending
         matches.sort(key=lambda m: m["confidence"], reverse=True)
         low_confidence.sort(key=lambda m: m["confidence"], reverse=True)
+        out_of_section.sort(key=lambda m: m["confidence"], reverse=True)
 
         logger.info(
-            "Pipeline results: %d matches, %d low-confidence, %d unknown",
-            len(matches),
-            len(low_confidence),
-            unknown_count,
+            "Pipeline results: %d matches, %d low-confidence, %d out-of-section, %d unknown",
+            len(matches), len(low_confidence), len(out_of_section), unknown_count,
         )
 
         return {
             "matches": matches,
             "low_confidence": low_confidence,
+            "out_of_section": out_of_section,
             "unknown_faces": unknown_count,
             "total_detected": total_detected,
         }
@@ -165,6 +173,7 @@ class FaceMatcher:
             return {
                 "matches": [],
                 "low_confidence": [],
+                "out_of_section": [],
                 "unknown_faces": 0,
                 "total_detected": 0,
             }
@@ -176,6 +185,7 @@ class FaceMatcher:
         # Process each image separately
         all_matches: Dict[str, Dict[str, Any]] = {}  # student_id -> best record
         all_low_conf: Dict[str, Dict[str, Any]] = {}
+        all_out_of_section: Dict[str, Dict[str, Any]] = {}
         total_unknown = 0
         total_detected = 0
 
@@ -190,29 +200,34 @@ class FaceMatcher:
                 sid = m["student_id"]
                 if sid not in all_matches or m["confidence"] > all_matches[sid]["confidence"]:
                     all_matches[sid] = m
-                # If previously low-confidence, promote to match
                 if sid in all_low_conf:
                     del all_low_conf[sid]
 
             for m in result["low_confidence"]:
                 sid = m["student_id"]
-                # Don't downgrade a high-confidence match
                 if sid in all_matches:
                     continue
                 if sid not in all_low_conf or m["confidence"] > all_low_conf[sid]["confidence"]:
                     all_low_conf[sid] = m
 
+            for m in result.get("out_of_section", []):
+                sid = m["student_id"]
+                if sid not in all_out_of_section or m["confidence"] > all_out_of_section[sid]["confidence"]:
+                    all_out_of_section[sid] = m
+
         matches = sorted(all_matches.values(), key=lambda m: m["confidence"], reverse=True)
         low_confidence = sorted(all_low_conf.values(), key=lambda m: m["confidence"], reverse=True)
+        out_of_section = sorted(all_out_of_section.values(), key=lambda m: m["confidence"], reverse=True)
 
         logger.info(
-            "Multi-image results (%d photos): %d matches, %d low-confidence, %d unknown, %d total faces",
-            len(images), len(matches), len(low_confidence), total_unknown, total_detected,
+            "Multi-image results (%d photos): %d matches, %d low-confidence, %d out-of-section, %d unknown",
+            len(images), len(matches), len(low_confidence), len(out_of_section), total_unknown,
         )
 
         return {
             "matches": matches,
             "low_confidence": low_confidence,
+            "out_of_section": out_of_section,
             "unknown_faces": total_unknown,
             "total_detected": total_detected,
             "images_processed": len(images),

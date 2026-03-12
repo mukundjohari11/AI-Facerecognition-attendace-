@@ -53,6 +53,26 @@ router.post('/capture', upload.array('images', 5), async (req, res) => {
             confidence: m.confidence,
         }));
 
+        // Out-of-section students (warning only, not saved in attendance)
+        const outOfSectionIds = (mlResult.out_of_section || []).map((m) => m.student_id);
+        let outOfSectionStudents = [];
+        if (outOfSectionIds.length > 0) {
+            const oosStudents = await Student.find(
+                { _id: { $in: outOfSectionIds } },
+                'name rollNumber section'
+            ).populate('section', 'name');
+            outOfSectionStudents = (mlResult.out_of_section || []).map((m) => {
+                const studentInfo = oosStudents.find((s) => s._id.toString() === m.student_id);
+                return {
+                    student_id: m.student_id,
+                    name: studentInfo?.name || 'Unknown',
+                    rollNumber: studentInfo?.rollNumber || '—',
+                    section: studentInfo?.section?.name || 'Unknown Section',
+                    confidence: m.confidence,
+                };
+            });
+        }
+
         const attendance = await Attendance.create({
             date: req.body.date || new Date(),
             sections: sectionIds,
@@ -64,14 +84,18 @@ router.post('/capture', upload.array('images', 5), async (req, res) => {
             totalDetected: mlResult.total_detected,
         });
 
-        // Populate for response......isko mt chedna
+        // Populate for response
         const populated = await Attendance.findById(attendance._id)
             .populate('presentStudents.student', 'name rollNumber')
             .populate('lowConfidenceMatches.student', 'name rollNumber')
             .populate('sections', 'name year department')
             .populate('teacher', 'name email');
 
-        res.status(201).json(populated);
+        // Attach out-of-section warning to response (not persisted)
+        const response = populated.toObject();
+        response.outOfSectionWarning = outOfSectionStudents;
+
+        res.status(201).json(response);
     } catch (err) {
         console.error('Attendance capture error:', err.message);
         res.status(500).json({ error: 'Attendance capture failed: ' + err.message });
