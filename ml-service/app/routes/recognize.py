@@ -29,7 +29,7 @@ def init_router(matcher, device_name: str):
     _device_name = device_name
 
 
-# ── Recognition ────────────────────────────────────────────────────────
+
 
 @router.post("/recognize", response_model=RecognizeResponse)
 async def recognize_faces(
@@ -47,7 +47,7 @@ async def recognize_faces(
     if _matcher is None:
         raise HTTPException(status_code=503, detail="ML service not initialised")
 
-    # Collect all uploaded files (support both 'image' and 'images' fields)
+    
     upload_files = []
     if images:
         upload_files.extend(images)
@@ -75,9 +75,6 @@ async def recognize_faces(
         raise HTTPException(status_code=500, detail=str(e))
 
     return RecognizeResponse(**results)
-
-
-# ── Enrollment ─────────────────────────────────────────────────────────
 
 @router.post("/enroll", response_model=EnrollResponse)
 async def enroll_student(
@@ -117,16 +114,12 @@ async def enroll_student(
         embeddings_added=count,
         total_index_size=_matcher.index_manager.total_embeddings,
     )
-
-
-# ── Index Management ──────────────────────────────────────────────────
-
 @router.post("/rebuild-index")
 async def rebuild_index():
     """Force rebuild the FAISS index from stored embeddings."""
     if _matcher is None:
         raise HTTPException(status_code=503, detail="ML service not initialised")
-    # The index self-maintains; this endpoint triggers a persist
+    # The index self-maintains;       this endpoint triggers a persist
     _matcher.index_manager._persist()
     return {"status": "ok", "total_embeddings": _matcher.index_manager.total_embeddings}
 
@@ -155,7 +148,7 @@ async def index_info():
     )
 
 
-# ── Health ─────────────────────────────────────────────────────────────
+ 
 
 @router.get("/health", response_model=HealthResponse)
 async def health():

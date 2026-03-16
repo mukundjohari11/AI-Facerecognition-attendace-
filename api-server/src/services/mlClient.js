@@ -4,7 +4,7 @@ const FormData = require('form-data');
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000/api/ml';
 
 /**
- * Client for communicating with the Python ML service.
+ * Frontend mein dekhenge rest
  */
 const mlClient = {
     /**
@@ -61,17 +61,13 @@ const mlClient = {
         return response.data;
     },
 
-    /**
-     * Remove a student from the ML index.
-     */
+    
     async removeStudent(studentId) {
         const response = await axios.delete(`${ML_SERVICE_URL}/students/${studentId}`);
         return response.data;
     },
 
-    /**
-     * Get ML service health.
-     */
+    
     async health() {
         const response = await axios.get(`${ML_SERVICE_URL}/health`, { timeout: 5000 });
         return response.data;

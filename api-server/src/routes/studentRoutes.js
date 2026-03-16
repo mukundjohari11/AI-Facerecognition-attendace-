@@ -55,7 +55,7 @@ router.post('/bulk', adminOnly, async (req, res) => {
     }
 });
 
-// POST /api/students/:id/enroll-face — upload face images and enroll
+// POST /api/students/:id/enroll-face...upload face images and enroll
 router.post('/:id/enroll-face', upload.array('images', 5), async (req, res) => {
     try {
         const student = await Student.findById(req.params.id);
@@ -92,7 +92,7 @@ router.post('/:id/enroll-face', upload.array('images', 5), async (req, res) => {
     }
 });
 
-// GET /api/students — list students with optional section filter
+// GET /api/students....list students with optional section filter
 router.get('/', async (req, res) => {
     try {
         const filter = {};

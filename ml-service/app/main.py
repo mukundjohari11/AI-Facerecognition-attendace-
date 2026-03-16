@@ -16,14 +16,14 @@ from app.services.faiss_index import FAISSIndexManager
 from app.services.matcher import FaceMatcher
 from app.routes.recognize import router as recognize_router, init_router
 
-#  Logging 
+# Logging 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-#  App
+
 app = FastAPI(
     title="Attendance ML Service",
     description="Face detection, embedding & recognition powered by MTCNN, FaceNet and FAISS",

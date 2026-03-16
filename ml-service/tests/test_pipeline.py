@@ -32,7 +32,7 @@ def test_faiss_index():
 
     manager = FAISSIndexManager()
 
-    # Create 10 fake "students" with random normalised embeddings
+    
     num_students = 10
     np.random.seed(42)
     embeddings = np.random.randn(num_students, EMBEDDING_DIM).astype(np.float32)
@@ -48,7 +48,7 @@ def test_faiss_index():
     print(f" Built index with {manager.total_embeddings} embeddings, "
           f"{manager.student_count} unique students")
 
-    # Search with exact same embedding → should return itself with ~1.0 similarity
+    # return ~1.0 similarity
     query = embeddings[3:4]  # query student #3
     distances, results = manager.search(query, k=3)
 
@@ -60,7 +60,7 @@ def test_faiss_index():
     assert distances[0][0] > 0.99, "Self-similarity should be ~1.0!"
     print(f" Self-match test PASSED (similarity={distances[0][0]:.4f})")
 
-    # Add another embedding for student 3 (simulating multi-image enrollment)
+    # 
     extra = embeddings[3] + np.random.randn(EMBEDDING_DIM).astype(np.float32) * 0.05
     extra = extra / np.linalg.norm(extra)
     manager.add_embeddings(extra.reshape(1, -1), ["STUDENT_003"])
@@ -79,7 +79,7 @@ def test_faiss_index():
     print("\n FAISS INDEX TESTS ALL PASSED!\n")
 
 
-# ── TEST 2: FaceNet Embedder with Synthetic Tensors ───────────────────
+#  TEST 2: FaceNet Embedder with Synthetic Tensors 
 
 def test_embedder_synthetic():
     separator("TEST 2: FaceNet Embedder — Synthetic Face Tensors")
@@ -107,7 +107,7 @@ def test_embedder_synthetic():
     print("\n EMBEDDER TESTS PASSED!\n")
 
 
-# ── TEST 3: Full Pipeline with Synthetic Data ─────────────────────────
+#  TEST 3: Full Pipeline with Synthetic Data 
 
 def test_full_pipeline_synthetic():
     separator("TEST 3: Full Pipeline — Synthetic Match Simulation")
@@ -117,7 +117,7 @@ def test_full_pipeline_synthetic():
 
     manager = FAISSIndexManager()
 
-    # Simulate 100 enrolled students
+    # Simulate 2800 enrolled students
     np.random.seed(123)
     num_students = 100
     embeddings = np.random.randn(num_students, EMBEDDING_DIM).astype(np.float32)
@@ -148,7 +148,7 @@ def test_full_pipeline_synthetic():
     all_queries = np.array(known_queries + unknown_queries, dtype=np.float32)
     print(f"   Simulating {len(present_ids)} known + 5 unknown faces")
 
-    # Search
+    
     distances, results = manager.search(all_queries, k=1)
 
     correct = 0
