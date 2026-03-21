@@ -11,10 +11,10 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 EMBEDDING_DIM = 512
-FACENET_PRETRAINED = "vggface2"
+FACENET_PRETRAINED = "vggface2"   # or  CASIA-WebFace 
 
 
-MIN_FACE_SIZE = 40          # Minimum face size in pixels(iska kuch krna padega)
+MIN_FACE_SIZE = 40    #or retina face but it is slower      # Minimum face size in pixels(iska kuch krna padega)
 DETECTION_THRESHOLDS = [0.6, 0.7, 0.7]   # MTCNN stage thresholds
 MAX_FACES_PER_IMAGE = 200
 

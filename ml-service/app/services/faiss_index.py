@@ -1,8 +1,12 @@
 """
 FAISS Index Manager — manages the vector index for fast similarity search.
+
+Thread-safe: all write operations are protected by a reentrant lock
+so that the enrollment queue's thread pool doesn't corrupt the index.
 """
 import json
 import logging
+import threading
 from typing import Dict, List, Optional, Tuple
 
 import faiss
@@ -17,12 +21,15 @@ class FAISSIndexManager:
     """
     Manages a FAISS IndexFlatIP (inner product ≡ cosine similarity
     when embeddings are L2-normalised).
+
+    Thread-safe: write operations protected by _write_lock.
     """
 
     def __init__(self):
         self.index: faiss.IndexFlatIP = faiss.IndexFlatIP(EMBEDDING_DIM)
         # Maps internal FAISS position → student_id string
         self._id_map: List[str] = []
+        self._write_lock = threading.RLock()
         self._load_if_exists()
 
     # ── Build / Modify ─────────────────────────────────────────────────
@@ -43,10 +50,11 @@ class FAISSIndexManager:
         )
         assert embeddings.shape[1] == EMBEDDING_DIM
 
-        self.index = faiss.IndexFlatIP(EMBEDDING_DIM)
-        self.index.add(embeddings.astype(np.float32))
-        self._id_map = list(student_ids)
-        self._persist()
+        with self._write_lock:
+            self.index = faiss.IndexFlatIP(EMBEDDING_DIM)
+            self.index.add(embeddings.astype(np.float32))
+            self._id_map = list(student_ids)
+            self._persist()
         logger.info(
             "Built FAISS index with %d embeddings", self.index.ntotal
         )
@@ -55,9 +63,10 @@ class FAISSIndexManager:
         self, embeddings: np.ndarray, student_ids: List[str]
     ) -> None:
         """Add one or more embeddings to the existing index."""
-        self.index.add(embeddings.astype(np.float32))
-        self._id_map.extend(student_ids)
-        self._persist()
+        with self._write_lock:
+            self.index.add(embeddings.astype(np.float32))
+            self._id_map.extend(student_ids)
+            self._persist()
         logger.info(
             "Added %d embeddings; total now %d",
             len(student_ids),
@@ -69,23 +78,25 @@ class FAISSIndexManager:
         Remove all embeddings for a student and rebuild the index.
         Returns True if the student was found and removed.
         """
-        indices = [
-            i for i, sid in enumerate(self._id_map) if sid == student_id
-        ]
-        if not indices:
-            return False
+        with self._write_lock:
+            indices = [
+                i for i, sid in enumerate(self._id_map) if sid == student_id
+            ]
+            if not indices:
+                return False
 
-        # Reconstruct all vectors, remove target, rebuild
-        all_vecs = self._reconstruct_all()
-        keep_mask = np.ones(len(self._id_map), dtype=bool)
-        keep_mask[indices] = False
+            # Reconstruct all vectors, remove target, rebuild
+            all_vecs = self._reconstruct_all()
+            keep_mask = np.ones(len(self._id_map), dtype=bool)
+            keep_mask[indices] = False
 
-        new_vecs = all_vecs[keep_mask]
-        new_ids = [
-            sid for i, sid in enumerate(self._id_map) if keep_mask[i]
-        ]
+            new_vecs = all_vecs[keep_mask]
+            new_ids = [
+                sid for i, sid in enumerate(self._id_map) if keep_mask[i]
+            ]
 
-        self.build_index(new_vecs, new_ids)
+            # build_index also acquires _write_lock — RLock allows reentrancy
+            self.build_index(new_vecs, new_ids)
         logger.info("Removed student %s (%d embeddings)", student_id, len(indices))
         return True
 

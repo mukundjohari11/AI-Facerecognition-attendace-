@@ -37,7 +37,8 @@ const mlClient = {
     },
 
     /**
-     * Enroll a student with face images.
+     * Enroll a student with face images (async queue-based).
+     * Submits enrollment, then polls until completion.
      * @param {string} studentId - Student ID
      * @param {Array<{buffer: Buffer, filename: string}>} images - Face images
      * @returns {Promise<object>} Enrollment result
@@ -53,12 +54,46 @@ const mlClient = {
             });
         }
 
-        const response = await axios.post(`${ML_SERVICE_URL}/enroll`, form, {
+        // Submit to queue
+        const submitRes = await axios.post(`${ML_SERVICE_URL}/enroll`, form, {
             headers: form.getHeaders(),
-            timeout: 30000,
+            timeout: 15000,
         });
 
-        return response.data;
+        const jobId = submitRes.data.job_id;
+
+        // Poll for completion (max 120 seconds)
+        const maxWait = 120000;
+        const pollInterval = 2000;
+        let elapsed = 0;
+
+        while (elapsed < maxWait) {
+            await new Promise((r) => setTimeout(r, pollInterval));
+            elapsed += pollInterval;
+
+            try {
+                const statusRes = await axios.get(
+                    `${ML_SERVICE_URL}/enroll/status/${jobId}`,
+                    { timeout: 5000 }
+                );
+
+                if (statusRes.data.status === 'completed') {
+                    return statusRes.data.result || statusRes.data;
+                }
+                if (statusRes.data.status === 'failed') {
+                    throw new Error(
+                        statusRes.data.error || 'Enrollment failed after retries'
+                    );
+                }
+                // else: queued or processing — keep polling
+            } catch (pollErr) {
+                // Network error while polling — keep trying
+                if (!pollErr.response) continue;
+                throw pollErr;
+            }
+        }
+
+        throw new Error('Enrollment timed out after 120 seconds');
     },
 
     

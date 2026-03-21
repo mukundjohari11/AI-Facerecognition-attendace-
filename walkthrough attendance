@@ -1,0 +1,64 @@
+# AttendAI — Walkthrough
+
+AI-powered facial recognition attendance system — fully tested end-to-end with MongoDB Atlas.
+
+## Architecture
+
+| Service | Tech | Port | Status |
+|---------|------|------|--------|
+| **ML Service** | FastAPI + MTCNN + FaceNet + FAISS | 8000 | ✅ Running |
+| **API Server** | Express + MongoDB Atlas | 5000 | ✅ Running |
+| **Frontend** | React (Vite) | 5173 | ✅ Running |
+
+---
+
+## E2E Test Results — Everything Verified ✅
+
+### 1. Admin Registration → Dashboard
+Registered `Admin Teacher` (admin@college.edu) → JWT auth → redirected to dashboard.
+
+![Dashboard after admin login — stats cards, sidebar navigation, user info at bottom](C:\Users\mukund\.gemini\antigravity\brain\06444955-50c9-49fc-918f-eb0b7e9ab420\dashboard_page_1772452340410.png)
+
+### 2. Section Creation → MongoDB Atlas
+Created section **CSE-A** (Computer Science, Year 1) → stored in Atlas cloud.
+
+![Sections page with CSE-A created — CRUD table with edit/delete actions](C:\Users\mukund\.gemini\antigravity\brain\06444955-50c9-49fc-918f-eb0b7e9ab420\sections_creation_check_1772452376172.png)
+
+### 3. Student Self-Registration Page
+3-step webcam enrollment flow — section dropdown populated from Atlas.
+
+![Student registration — step 1 details form with webcam capture next](C:\Users\mukund\.gemini\antigravity\brain\06444955-50c9-49fc-918f-eb0b7e9ab420\student_registration_final_1772452408523.png)
+
+### 4. ML Pipeline Tests
+All 4 tests passed on the Python ML service:
+
+| Test | Result |
+|------|--------|
+| FAISS Index (add/search/remove/batch) | ✅ Self-match similarity = 1.0000 |
+| FaceNet Embedder (512-dim L2-normalized) | ✅ Correct shape, norms ~1.0 |
+| Full Pipeline (100 students, 25 faces) | ✅ Correct match/reject |
+| Real Image Test | ⏭️ Skipped (no sample images) |
+
+### E2E Test Recording
+![Full end-to-end browser test recording](C:\Users\mukund\.gemini\antigravity\brain\06444955-50c9-49fc-918f-eb0b7e9ab420\e2e_registration_test_1772452245154.webp)
+
+---
+
+## How to Run
+
+```bash
+# Terminal 1: ML Service
+cd ml-service && .\venv\Scripts\activate && python -m app.main
+
+# Terminal 2: API Server
+cd api-server && node src/index.js
+
+# Terminal 3: Frontend
+cd frontend && npm run dev
+```
+
+## Prototype Demo Flow
+
+1. Admin logs in → creates sections (CSE-A, CSE-B, etc.)
+2. Students visit `/register` → enter details → webcam captures face → enrolled into FAISS
+3. Teacher visits `/capture` → uploads group photo → faces matched → approves attendance

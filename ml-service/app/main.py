@@ -1,7 +1,7 @@
 """
 ML Service — FastAPI Application Entrypoint.
 
-Initialises MTCNN, FaceNet, FAISS, and exposes the recognition API.
+Initialises MTCNN, FaceNet, FAISS, enrollment queue, and exposes the recognition API.
 """
 import logging
 
@@ -14,9 +14,10 @@ from app.services.detector import FaceDetector
 from app.services.embedder import FaceEmbedder
 from app.services.faiss_index import FAISSIndexManager
 from app.services.matcher import FaceMatcher
+from app.services.enrollment_queue import enrollment_queue
 from app.routes.recognize import router as recognize_router, init_router
 
-# Logging 
+# Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Attendance ML Service",
     description="Face detection, embedding & recognition powered by MTCNN, FaceNet and FAISS",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -41,7 +42,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    """Load models and build pipeline on startup."""
+    """Load models, build pipeline, and start enrollment queue."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device_name = str(device)
     logger.info("Using device: %s", device_name)
@@ -59,11 +60,23 @@ async def startup():
 
     # Inject into router
     init_router(matcher, device_name)
+
+    # Start the enrollment queue worker
+    enrollment_queue.set_matcher(matcher)
+    await enrollment_queue.start()
+
     logger.info(
-        "ML Service ready — index has %d embeddings for %d students",
+        "ML Service ready — index has %d embeddings for %d students, enrollment queue active",
         index_manager.total_embeddings,
         index_manager.student_count,
     )
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Stop the enrollment queue gracefully."""
+    await enrollment_queue.stop()
+    logger.info("ML Service shut down")
 
 
 # Mount routes

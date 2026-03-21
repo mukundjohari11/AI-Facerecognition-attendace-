@@ -1,5 +1,8 @@
 """
 Recognition & Enrollment API routes.
+
+Enrollment uses a background queue to avoid blocking the event loop and
+to handle duplicates, retries, and failure tracking gracefully.
 """
 import io
 import logging
@@ -14,6 +17,7 @@ from app.models.schemas import (
     IndexInfoResponse,
     HealthResponse,
 )
+from app.services.enrollment_queue import enrollment_queue
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,6 +33,7 @@ def init_router(matcher, device_name: str):
     _device_name = device_name
 
 
+# ── Recognition (read-only, non-blocking) ─────────────────────────────
 
 
 @router.post("/recognize", response_model=RecognizeResponse)
@@ -47,7 +52,6 @@ async def recognize_faces(
     if _matcher is None:
         raise HTTPException(status_code=503, detail="ML service not initialised")
 
-    
     upload_files = []
     if images:
         upload_files.extend(images)
@@ -69,23 +73,34 @@ async def recognize_faces(
         allowed_ids = [s.strip() for s in section_student_ids.split(",") if s.strip()]
 
     try:
-        results = _matcher.match_faces_multi(pil_images, allowed_student_ids=allowed_ids)
+        # Recognition is read-only on FAISS — safe to run in thread pool
+        import asyncio
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(
+            None, _matcher.match_faces_multi, pil_images, allowed_ids
+        )
     except Exception as e:
         logger.exception("Recognition failed")
         raise HTTPException(status_code=500, detail=str(e))
 
     return RecognizeResponse(**results)
 
-@router.post("/enroll", response_model=EnrollResponse)
+
+# ── Enrollment (queued, non-blocking) ─────────────────────────────────
+
+
+@router.post("/enroll")
 async def enroll_student(
     student_id: str = Form(...),
     images: List[UploadFile] = File(...),
 ):
     """
-    Enroll a student by uploading one or more face images.
+    Queue a student enrollment job. Returns immediately with a job_id.
 
     - **student_id**: Unique student identifier.
     - **images**: One or more face images (JPEG/PNG).
+
+    Poll `/enroll/status/{job_id}` to check progress.
     """
     if _matcher is None:
         raise HTTPException(status_code=503, detail="ML service not initialised")
@@ -101,25 +116,92 @@ async def enroll_student(
                 detail=f"Invalid image '{img_file.filename}': {e}",
             )
 
+    if not pil_images:
+        raise HTTPException(status_code=400, detail="At least one image is required")
+
     try:
-        count = _matcher.enroll_student(student_id, pil_images)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        job = enrollment_queue.enqueue(student_id, pil_images)
     except Exception as e:
-        logger.exception("Enrollment failed for %s", student_id)
+        logger.exception("Failed to queue enrollment for %s", student_id)
         raise HTTPException(status_code=500, detail=str(e))
 
-    return EnrollResponse(
-        student_id=student_id,
-        embeddings_added=count,
-        total_index_size=_matcher.index_manager.total_embeddings,
-    )
+    return {
+        "job_id": job.job_id,
+        "student_id": job.student_id,
+        "status": job.status.value,
+        "message": "Enrollment queued. Poll /enroll/status/{job_id} for progress.",
+        "queue_position": job.position_in_queue,
+    }
+
+
+@router.get("/enroll/status/{job_id}")
+async def enrollment_status(job_id: str):
+    """
+    Check the status of an enrollment job.
+
+    Returns: status (queued/processing/completed/failed), result or error.
+    """
+    job = enrollment_queue.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    response = {
+        "job_id": job.job_id,
+        "student_id": job.student_id,
+        "status": job.status.value,
+        "retries": job.retries,
+    }
+
+    if job.result:
+        response["result"] = job.result
+    if job.error:
+        response["error"] = job.error
+    if job.completed_at:
+        response["processing_time_sec"] = round(job.completed_at - job.created_at, 2)
+
+    return response
+
+
+@router.get("/enroll/student-status/{student_id}")
+async def student_enrollment_status(student_id: str):
+    """Check enrollment status by student ID (for the frontend to poll)."""
+    job = enrollment_queue.get_student_job(student_id)
+    if not job:
+        # Check if already in FAISS
+        if _matcher and student_id in _matcher.index_manager._id_map:
+            return {
+                "student_id": student_id,
+                "status": "completed",
+                "message": "Student is already enrolled",
+            }
+        return {
+            "student_id": student_id,
+            "status": "not_found",
+            "message": "No enrollment job found for this student",
+        }
+
+    return {
+        "job_id": job.job_id,
+        "student_id": job.student_id,
+        "status": job.status.value,
+        "error": job.error,
+    }
+
+
+@router.get("/enroll/queue-stats")
+async def queue_stats():
+    """Get enrollment queue statistics."""
+    return enrollment_queue.stats
+
+
+# ── Index Management ──────────────────────────────────────────────────
+
+
 @router.post("/rebuild-index")
 async def rebuild_index():
     """Force rebuild the FAISS index from stored embeddings."""
     if _matcher is None:
         raise HTTPException(status_code=503, detail="ML service not initialised")
-    # The index self-maintains;       this endpoint triggers a persist
     _matcher.index_manager._persist()
     return {"status": "ok", "total_embeddings": _matcher.index_manager.total_embeddings}
 
@@ -148,10 +230,9 @@ async def index_info():
     )
 
 
- 
-
 @router.get("/health", response_model=HealthResponse)
 async def health():
+    queue_info = enrollment_queue.stats
     return HealthResponse(
         status="ok",
         index_size=_matcher.index_manager.total_embeddings if _matcher else 0,
